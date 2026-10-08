@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wardrobe Planner</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Wardrobe Planner</h1>
+  <div class="who">
+    <select id="user" aria-label="User"></select>
+    <button class="btn ghost" id="newUser">+ User</button>
+    <span id="account" class="hide"><span id="email" class="hint"></span> <span id="sync" class="hint"></span>
+      <button class="btn ghost" id="signOut">Sign out</button></span>
+  </div>
+</header>
+
+<main>
+  <section id="auth" class="hide">
+    <div class="card authcard">
+      <h2 id="authTitle">Sign in</h2>
+      <p class="hint">Your wardrobe is saved to your account and syncs across devices.</p>
+      <label for="aEmail">Email</label><input id="aEmail" type="email" autocomplete="email">
+      <label for="aPass">Password</label><input id="aPass" type="password" autocomplete="current-password" minlength="6">
+      <div class="inline" style="margin-top:12px">
+        <button class="btn" id="aGo" style="margin:0">Sign in</button>
+        <button class="btn ghost" id="aSwitch" style="margin:0">Create account</button>
+        <button class="link" id="aForgot">Forgot password?</button>
+      </div>
+      <p id="aMsg" class="warn"></p>
+    </div>
+  </section>
+
+  <nav id="tabs">
+    <button data-tab="place" class="on">Place</button>
+    <button data-tab="layout">Wardrobes</button>
+    <button data-tab="setup">Setup</button>
+    <button data-tab="data">Data</button>
+  </nav>
+
+  <section id="place">
+    <div class="card">
+      <h2>Where should this go?</h2>
+      <p class="hint">Got a pile of clothes? Enter the category and how many pieces, and the planner splits them across sections that have room.</p>
+      <div class="row">
+        <div><label for="pName">Name (optional)</label><input id="pName" placeholder="e.g. Work shirts"></div>
+        <div><label for="pCat">Category</label><select id="pCat"></select></div>
+      </div>
+      <div class="row">
+        <div><label for="pQty">Pieces</label><input id="pQty" type="number" min="1" value="1"></div>
+        <div><label for="pFreq">How often worn</label>
+          <select id="pFreq">
+            <option value="daily">Almost daily (easy reach)</option>
+            <option value="weekly" selected>Weekly</option>
+            <option value="rare">Rarely / seasonal (hard reach is fine)</option>
+          </select></div>
+      </div>
+      <button class="btn" id="find">Find a spot</button>
+      <div id="plan"></div>
+    </div>
+  </section>
+
+  <section id="layout" class="hide">
+    <div class="card">
+      <input id="search" placeholder="Search a garment or category...">
+      <div id="searchResult"></div>
+    </div>
+    <div id="wardrobes" class="wardrobes"></div>
+  </section>
+
+  <section id="setup" class="hide">
+    <div class="card" id="welcome"></div>
+    <div class="card">
+      <h2>1. Quick layout</h2>
+      <p class="hint">Generate a starting layout, then fine-tune names, categories and capacity below.</p>
+      <div class="row3">
+        <div><label for="gW">Wardrobes</label><input id="gW" type="number" min="1" max="20" value="3"></div>
+        <div><label for="gS">Shelves per wardrobe</label><input id="gS" type="number" min="1" max="20" value="4"></div>
+        <div><label for="gC">Sections per shelf</label><input id="gC" type="number" min="1" max="10" value="3"></div>
+      </div>
+      <button class="btn" id="generate">Generate layout</button>
+    </div>
+    <div class="card">
+      <h2>2. Categories</h2>
+      <p class="hint">Types of clothing you want to sort by.</p>
+      <div id="catList" class="chips"></div>
+      <div class="inline"><input id="catNew" placeholder="Add a category"><button class="btn" id="catAdd">Add</button></div>
+    </div>
+    <div class="card">
+      <h2>3. Fine-tune</h2>
+      <p class="hint">Shelves are listed top to bottom. Leave capacity empty for no limit.</p>
+      <div id="editor"></div>
+    </div>
+  </section>
+
+  <section id="data" class="hide">
+    <div class="card">
+      <h2>Your data</h2>
+      <p class="hint">Data is stored in this browser only. Export a backup to move it to another device.</p>
+      <div class="inline">
+        <button class="btn ghost" id="exp">Export JSON</button>
+        <label class="btn ghost filebtn">Import JSON<input type="file" id="imp" accept=".json" class="hide"></label>
+        <button class="btn ghost" id="clearItems">Remove all garments</button>
+        <button class="btn danger" id="delUser">Delete this user</button>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

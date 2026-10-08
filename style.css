@@ -1,0 +1,60 @@
+:root { --bg:#f6f5f1; --card:#fff; --ink:#1f2933; --mute:#6b7280; --line:#e3e1d9; --acc:#2f6f5e; --acc2:#e8f2ee; --warn:#b45309; --bad:#b91c1c; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16191c; --card:#1f2428; --ink:#e8eaed; --mute:#9aa3ad; --line:#323a41; --acc:#5fb59d; --acc2:#223a33; --warn:#f59e0b; --bad:#f87171; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,sans-serif; }
+header { max-width:1000px; margin:0 auto; padding:16px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+h1 { font-size:20px; margin:0; }
+h2 { font-size:17px; margin:0 0 8px; }
+main { max-width:1000px; margin:0 auto; padding:0 16px 48px; }
+.who, .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.who select { width:auto; }
+nav { display:flex; gap:6px; margin-bottom:16px; }
+nav button { flex:1; padding:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:8px; cursor:pointer; font:inherit; }
+nav button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+.hint { color:var(--mute); font-size:14px; margin:0 0 8px; }
+label { display:block; font-size:14px; color:var(--mute); margin:10px 0 4px; }
+input, select { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.row3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media (max-width:560px) { .row, .row3 { grid-template-columns:1fr; } }
+.btn { padding:9px 14px; border:0; border-radius:8px; background:var(--acc); color:#fff; cursor:pointer; font:inherit; margin-top:12px; display:inline-block; }
+.btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+.btn.danger { background:transparent; color:var(--bad); border:1px solid var(--bad); }
+.inline .btn { margin-top:0; }
+.link { background:none; border:0; color:var(--warn); cursor:pointer; font:inherit; padding:0 4px; }
+.hide { display:none !important; }
+.filebtn { cursor:pointer; margin-top:0; }
+
+.plan { background:var(--acc2); border-radius:10px; padding:12px; margin-top:12px; }
+.plan li { margin:4px 0; }
+.warn { color:var(--warn); }
+
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.chip { font-size:13px; padding:3px 6px 3px 10px; border-radius:99px; background:var(--acc2); color:var(--acc); }
+.chip button { background:none; border:0; color:inherit; cursor:pointer; font-size:15px; }
+
+.wardrobes { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }
+.wardrobe { background:var(--card); border:2px solid var(--line); border-radius:12px; padding:10px; }
+.wardrobe h3 { margin:0 0 8px; font-size:16px; }
+.shelf { border-top:1px dashed var(--line); padding:6px 0; }
+.shelf > .sname { font-size:12px; color:var(--mute); }
+.subs { display:flex; gap:6px; flex-wrap:wrap; }
+.sub { flex:1; min-width:100px; border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:13px; }
+.sub summary { cursor:pointer; list-style:none; }
+.sub .cat { color:var(--acc); font-size:12px; }
+.bar { height:5px; background:var(--line); border-radius:3px; margin-top:4px; overflow:hidden; }
+.bar i { display:block; height:100%; background:var(--acc); }
+.bar i.full { background:var(--bad); }
+.sub ul { margin:6px 0 0; padding:0; list-style:none; }
+.sub li { display:flex; justify-content:space-between; gap:4px; }
+.sub.hit { outline:2px solid var(--warn); }
+
+.ed-wardrobe { border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:12px; }
+.ed-head { display:flex; gap:8px; align-items:center; }
+.ed-head input { font-weight:600; }
+.ed-shelf { margin:10px 0 0 10px; padding-left:10px; border-left:3px solid var(--acc2); }
+.ed-sub { display:grid; grid-template-columns:2fr 2fr 1fr auto; gap:6px; margin-top:6px; }
+@media (max-width:560px) { .ed-sub { grid-template-columns:1fr 1fr; } }
