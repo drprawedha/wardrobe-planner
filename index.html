@@ -3,111 +3,189 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#3158B8">
 <title>Wardrobe Planner</title>
+<link rel="icon" href="assets/mascot/13-face-normal.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <h1>Wardrobe Planner</h1>
-  <div class="who">
-    <select id="user" aria-label="User"></select>
-    <button class="btn ghost" id="newUser">+ User</button>
-    <span id="account" class="hide"><span id="email" class="hint"></span> <span id="sync" class="hint"></span>
-      <button class="btn ghost" id="signOut">Sign out</button></span>
-  </div>
-</header>
 
-<main>
-  <section id="auth" class="hide">
-    <div class="card authcard">
-      <h2 id="authTitle">Sign in</h2>
-      <p class="hint">Your wardrobe is saved to your account and syncs across devices.</p>
-      <label for="aEmail">Email</label><input id="aEmail" type="email" autocomplete="email">
-      <label for="aPass">Password</label><input id="aPass" type="password" autocomplete="current-password" minlength="6">
-      <div class="inline" style="margin-top:12px">
-        <button class="btn" id="aGo" style="margin:0">Sign in</button>
-        <button class="btn ghost" id="aSwitch" style="margin:0">Create account</button>
-        <button class="link" id="aForgot">Forgot password?</button>
-      </div>
-      <p id="aMsg" class="warn"></p>
+<div id="loading" role="status" aria-live="polite">
+  <img class="mascot" src="assets/mascot/07-loading.png" alt="">
+  <p>Fetching your wardrobe…</p>
+</div>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mascot"><img src="assets/mascot/01-mascot-main.png" alt="Duck mascot"></div>
+      <div><strong>Wardrobe</strong><span>Planner</span></div>
     </div>
-  </section>
-
-  <nav id="tabs">
-    <button data-tab="place" class="on">Place</button>
-    <button data-tab="layout">Wardrobes</button>
-    <button data-tab="setup">Setup</button>
-    <button data-tab="data">Data</button>
-  </nav>
-
-  <section id="place">
-    <div class="card">
-      <h2>Where should this go?</h2>
-      <p class="hint">Got a pile of clothes? Enter the category and how many pieces, and the planner splits them across sections that have room.</p>
-      <div class="row">
-        <div><label for="pName">Name (optional)</label><input id="pName" placeholder="e.g. Work shirts"></div>
-        <div><label for="pCat">Category</label><select id="pCat"></select></div>
-      </div>
-      <div class="row">
-        <div><label for="pQty">Pieces</label><input id="pQty" type="number" min="1" value="1"></div>
-        <div><label for="pFreq">How often worn</label>
-          <select id="pFreq">
-            <option value="daily">Almost daily (easy reach)</option>
-            <option value="weekly" selected>Weekly</option>
-            <option value="rare">Rarely / seasonal (hard reach is fine)</option>
-          </select></div>
-      </div>
-      <button class="btn" id="find">Find a spot</button>
-      <div id="plan"></div>
+    <nav class="side-nav">
+      <button class="nav-item active" data-tab="place"><span>✦</span>Place</button>
+      <button class="nav-item" data-tab="layout"><span>▦</span>Wardrobes</button>
+      <button class="nav-item" data-tab="setup"><span>⌘</span>Setup</button>
+      <button class="nav-item" data-tab="data"><span>↕</span>Data</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">☼</button>
+      <span class="sync-dot" data-sync-dot></span><span data-sync-text>Saved</span>
     </div>
-  </section>
+  </aside>
 
-  <section id="layout" class="hide">
-    <div class="card">
-      <input id="search" placeholder="Search a garment or category...">
+  <main class="main">
+    <header class="topbar">
+      <div class="mobile-brand">
+        <div class="brand-mascot small"><img src="assets/mascot/01-mascot-main.png" alt=""></div>
+        <strong>Wardrobe Planner</strong>
+      </div>
+      <div class="top-actions">
+        <span class="sync-status"><span class="sync-dot" data-sync-dot></span><span data-sync-text>Saved</span></span>
+        <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">☼</button>
+      </div>
+    </header>
+
+    <!-- SIGN IN -->
+    <section id="auth" class="screen auth-screen">
+      <div class="auth-card card">
+        <div class="auth-duck"><img id="aMascot" src="assets/mascot/01-mascot-main.png" alt="Friendly duck mascot"></div>
+        <p class="eyebrow">WELCOME HOME</p>
+        <h1 id="authTitle">Your wardrobe, <span>sorted.</span></h1>
+        <p class="muted">Tell the duck what you have. We’ll help you decide where it belongs.</p>
+        <form id="authForm" novalidate>
+          <label>Email<input id="aEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
+          <label>Password<input id="aPass" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters"></label>
+          <div class="form-row"><span></span><button type="button" class="text-link" id="aForgot">Forgot password?</button></div>
+          <button class="btn primary full" type="submit" id="aGo">Sign in</button>
+        </form>
+        <div class="divider"><span>or</span></div>
+        <button class="btn secondary full" type="button" id="aSwitch">Create account</button>
+        <p id="aMsg" class="auth-msg" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <!-- PLACE -->
+    <section id="place" class="screen">
+      <div class="page-head">
+        <div><p class="eyebrow">QUICK SORT</p><h1>Where should this pile go?</h1><p class="muted">One pile at a time. The duck will find the best spot.</p></div>
+        <div class="duck-bubble"><img src="assets/mascot/02-carrying-clothes.png" alt=""><span>Quack!<br><b>Let’s tidy.</b></span></div>
+      </div>
+      <div class="place-grid">
+        <div class="card place-card">
+          <div class="card-title"><span class="step-num">1</span><div><h2>What are you putting away?</h2><p class="muted">Pick one category.</p></div></div>
+          <div class="chips" id="placeCategories"></div>
+          <label class="plain">Label (optional)<input id="pName" placeholder="e.g. Work shirts"></label>
+
+          <div class="card-title split"><div class="inline-title"><span class="step-num">2</span><h2>How many pieces?</h2></div>
+            <div class="stepper"><button type="button" data-qty="-1" aria-label="Fewer">−</button><input id="pQty" type="number" min="1" max="999" value="1" aria-label="Pieces"><button type="button" data-qty="1" aria-label="More">+</button></div></div>
+
+          <div class="card-title split"><div class="inline-title"><span class="step-num">3</span><h2>How often do you wear them?</h2></div></div>
+          <div class="wear-grid" id="wearGrid">
+            <button type="button" class="wear" data-freq="daily"><b>Daily</b><small>Most days</small></button>
+            <button type="button" class="wear selected" data-freq="weekly"><b>Weekly</b><small>Some weeks</small></button>
+            <button type="button" class="wear" data-freq="rare"><b>Rarely</b><small>Special / seasonal</small></button>
+          </div>
+          <button class="btn primary full find-btn" id="find">Find a spot <span>→</span></button>
+        </div>
+
+        <div class="result-column">
+          <div id="plan"></div>
+          <div class="card tip-card"><img class="mascot sm" src="assets/mascot/11-tips.png" alt=""><div><b>Duck tip</b><p id="tipText"></p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WARDROBES -->
+    <section id="layout" class="screen hide">
+      <div class="page-head compact"><div><p class="eyebrow">YOUR STORAGE</p><h1>Wardrobes</h1><p class="muted">See what’s where at a glance.</p></div></div>
+      <div class="search-wrap"><span>⌕</span><input id="search" placeholder="Search clothing, section or category…" aria-label="Search"><kbd>Ctrl K</kbd></div>
       <div id="searchResult"></div>
-    </div>
-    <div id="wardrobes" class="wardrobes"></div>
-  </section>
+      <div id="wardrobes" class="wardrobe-list"></div>
+    </section>
 
-  <section id="setup" class="hide">
-    <div class="card" id="welcome"></div>
-    <div class="card">
-      <h2>1. Quick layout</h2>
-      <p class="hint">Generate a starting layout, then fine-tune names, categories and capacity below.</p>
-      <div class="row3">
-        <div><label for="gW">Wardrobes</label><input id="gW" type="number" min="1" max="20" value="3"></div>
-        <div><label for="gS">Shelves per wardrobe</label><input id="gS" type="number" min="1" max="20" value="4"></div>
-        <div><label for="gC">Sections per shelf</label><input id="gC" type="number" min="1" max="10" value="3"></div>
+    <!-- SETUP -->
+    <section id="setup" class="screen hide">
+      <div class="page-head compact">
+        <div><p class="eyebrow">ONE-TIME SETUP</p><h1 id="setupTitle">Make your storage fit you.</h1><p class="muted">You can change this any time.</p></div>
+        <div class="duck-bubble"><img id="setupMascot" src="assets/mascot/03-pointing-wardrobe.png" alt=""><span id="setupBubble">Show me<br><b>your wardrobes!</b></span></div>
       </div>
-      <button class="btn" id="generate">Generate layout</button>
-    </div>
-    <div class="card">
-      <h2>2. Categories</h2>
-      <p class="hint">Types of clothing you want to sort by.</p>
-      <div id="catList" class="chips"></div>
-      <div class="inline"><input id="catNew" placeholder="Add a category"><button class="btn" id="catAdd">Add</button></div>
-    </div>
-    <div class="card">
-      <h2>3. Fine-tune</h2>
-      <p class="hint">Shelves are listed top to bottom. Leave capacity empty for no limit.</p>
-      <div id="editor"></div>
-    </div>
-  </section>
+      <div class="setup-progress" id="setupProgress">
+        <button type="button" class="progress-dot active" data-go="1" aria-label="Step 1">1</button><span></span>
+        <button type="button" class="progress-dot" data-go="2" aria-label="Step 2">2</button><span></span>
+        <button type="button" class="progress-dot" data-go="3" aria-label="Step 3">3</button>
+      </div>
+      <div class="card setup-card">
+        <div class="setup-step" data-panel="1">
+          <p class="eyebrow">STEP 1 OF 3</p><h2>How is your wardrobe arranged?</h2><p class="muted">Use the steppers. The preview updates as you change them.</p>
+          <div class="setup-controls">
+            <div class="setting-row"><div><b>Wardrobes</b><small>Separate cabinets</small></div><div class="stepper"><button type="button" data-set="w" data-step="-1" aria-label="Fewer wardrobes">−</button><strong id="sW">3</strong><button type="button" data-set="w" data-step="1" aria-label="More wardrobes">+</button></div></div>
+            <div class="setting-row"><div><b>Shelves per wardrobe</b><small>Horizontal levels</small></div><div class="stepper"><button type="button" data-set="s" data-step="-1" aria-label="Fewer shelves">−</button><strong id="sS">4</strong><button type="button" data-set="s" data-step="1" aria-label="More shelves">+</button></div></div>
+            <div class="setting-row"><div><b>Sections per shelf</b><small>Side-by-side zones</small></div><div class="stepper"><button type="button" data-set="c" data-step="-1" aria-label="Fewer sections">−</button><strong id="sC">3</strong><button type="button" data-set="c" data-step="1" aria-label="More sections">+</button></div></div>
+          </div>
+          <p class="tiny-note" id="rebuildNote" hidden>Changing these numbers rebuilds your layout and removes placed garments.</p>
+          <div class="mini-preview" id="miniPreview"></div>
+        </div>
 
-  <section id="data" class="hide">
-    <div class="card">
-      <h2>Your data</h2>
-      <p class="hint">Data is stored in this browser only. Export a backup to move it to another device.</p>
-      <div class="inline">
-        <button class="btn ghost" id="exp">Export JSON</button>
-        <label class="btn ghost filebtn">Import JSON<input type="file" id="imp" accept=".json" class="hide"></label>
-        <button class="btn ghost" id="clearItems">Remove all garments</button>
-        <button class="btn danger" id="delUser">Delete this user</button>
+        <div class="setup-step" data-panel="2" hidden>
+          <p class="eyebrow">STEP 2 OF 3</p><h2>What do you usually store?</h2><p class="muted">Choose categories. Add your own if one is missing.</p>
+          <div class="chips big" id="setupCategories"></div>
+          <div class="empty-tip"><img class="mascot xs" src="assets/mascot/06-checklist.png" alt=""><span>Pick only what you actually use. A smaller list is easier to keep tidy.</span></div>
+        </div>
+
+        <div class="setup-step" data-panel="3" hidden>
+          <p class="eyebrow">STEP 3 OF 3</p><h2>Fine-tune your sections</h2><p class="muted">Shelves are listed top to bottom. Rename a zone, assign a category and set an optional maximum.</p>
+          <div id="editor"></div>
+        </div>
+
+        <div class="setup-actions"><button type="button" class="btn ghost" id="setupBack" hidden>Back</button><button type="button" class="btn primary" id="setupNext">Next</button></div>
       </div>
-    </div>
-  </section>
-</main>
+    </section>
+
+    <!-- DATA -->
+    <section id="data" class="screen hide">
+      <div class="page-head compact"><div><p class="eyebrow">CONTROL CENTER</p><h1>Data & account</h1><p class="muted">Back up your layout and manage your preferences.</p></div></div>
+      <div class="data-grid">
+        <div class="card">
+          <div class="card-title"><div class="data-icon">↕</div><div><h2>Backup</h2><p class="muted">Keep a copy of your wardrobe map.</p></div></div>
+          <div class="data-actions"><button class="btn secondary" id="exp">Export backup</button>
+            <label class="btn secondary filebtn">Import backup<input type="file" id="imp" accept=".json" class="hide"></label></div>
+        </div>
+        <div class="card danger-card">
+          <div class="card-title"><div class="data-icon">⌫</div><div><h2>Remove garments</h2><p class="muted">Removes clothing records, not your cabinet setup.</p></div></div>
+          <button class="btn danger" id="clearItems">Remove all garments</button>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="data-icon">☼</div><div><h2>Appearance</h2><p class="muted">Switch between light and dark mode.</p></div></div>
+          <button class="btn secondary" data-theme-toggle>Toggle dark mode</button>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="data-icon">☺</div><div><h2>Account</h2><p class="muted" id="accountLine">Data stays in this browser.</p></div></div>
+          <div id="localUsers" class="data-actions">
+            <select id="user" aria-label="User"></select>
+            <button class="btn secondary" id="newUser">+ New user</button>
+            <button class="btn danger" id="delUser">Delete this user</button>
+          </div>
+          <div id="account" class="data-actions hide">
+            <button class="btn secondary" id="signOut">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="place"><span>✦</span>Place</button>
+    <button class="nav-item" data-tab="layout"><span>▦</span>Wardrobes</button>
+    <button class="nav-item" data-tab="setup"><span>⌘</span>Setup</button>
+    <button class="nav-item" data-tab="data"><span>↕</span>Data</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><img id="toastImg" alt=""><span id="toastText"></span></div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>

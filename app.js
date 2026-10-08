@@ -1,6 +1,6 @@
 "use strict";
 
-// ---------- Storage (swap this adapter for Supabase later) ----------
+// ---------- Storage (local cache; Supabase sync is layered on top below) ----------
 const Store = {
   users() { return read("wp:users", []); },
   saveUsers(list) { write("wp:users", list); },
@@ -15,13 +15,50 @@ function write(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } c
 
 // ---------- Helpers ----------
 const $ = id => document.getElementById(id);
+const $$ = sel => [...document.querySelectorAll(sel)];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ANY = "*";
 const DEFAULT_CATS = ["T-shirts", "Shirts", "Pants", "Jeans", "Shorts", "Jackets", "Dresses", "Sweaters", "Activewear", "Underwear & socks", "Formal", "Seasonal"];
 const letter = i => String.fromCharCode(65 + (i % 26));
+const MASCOT = n => `assets/mascot/${n}.png`;
+const TIPS = [
+  "Keep everyday clothes between waist and eye level.",
+  "Fold knitwear. Hanging stretches the shoulders.",
+  "Put the things you rarely wear on the highest or lowest shelf.",
+  "Group by category first, then by color.",
+  "Leave a little free space in each section so it stays tidy."
+];
 
 let users = [], user = "", data = null;
+
+// ---------- Toast, sync indicator, theme ----------
+let toastTimer = null;
+function toast(msg, kind = "ok") {
+  const face = { ok: "14-face-happy", err: "15-face-sad", save: "10-saving-data" }[kind] || "14-face-happy";
+  $("toastImg").src = MASCOT(face);
+  $("toastText").textContent = msg;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), 2800);
+}
+function setSync(text) {
+  $$("[data-sync-text]").forEach(e => { e.textContent = text; });
+  const state = /saving|loading/i.test(text) ? "saving" : /not|could/i.test(text) ? "error" : "";
+  $$("[data-sync-dot]").forEach(e => { e.classList.toggle("saving", state === "saving"); e.classList.toggle("error", state === "error"); });
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("wp-theme", t); } catch {}
+}
+(function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem("wp-theme"); } catch {}
+  applyTheme(t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+})();
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-theme-toggle]")) applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+});
 
 // ---------- Cloud (Supabase) ----------
 const CFG = window.WP_CONFIG || {};
@@ -29,7 +66,6 @@ const CLOUD = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase);
 const sb = CLOUD ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
 let uidCloud = null, saveTimer = null;
 
-function setSync(text) { $("sync").textContent = text; }
 // Always keep a local copy (works offline); in cloud mode also push to Supabase shortly after the last edit.
 function persist() {
   Store.save(user, data);
@@ -39,9 +75,10 @@ function persist() {
   saveTimer = setTimeout(pushCloud, 800);
 }
 async function pushCloud() {
+  saveTimer = null;
   const { error } = await sb.from("wardrobe_data").upsert({ user_id: uidCloud, data, updated_at: new Date().toISOString() });
-  setSync(error ? "Not saved — will retry on next change" : "Saved");
-  if (error) console.error(error);
+  setSync(error ? "Not saved" : "Saved");
+  if (error) { console.error(error); toast("Couldn’t save. We’ll retry on your next change.", "err"); }
 }
 window.addEventListener("beforeunload", () => { if (saveTimer) { clearTimeout(saveTimer); pushCloud(); } });
 
@@ -52,7 +89,6 @@ function newShelf(n, subs) { return { id: uid(), name: "Shelf " + n, subs: Array
 function newWardrobe(n, shelves, subs) {
   return { id: uid(), name: "Wardrobe " + n, shelves: Array.from({ length: shelves }, (_, i) => newShelf(i + 1, subs)) };
 }
-
 function allSubs() {
   const out = [];
   data.wardrobes.forEach(w => w.shelves.forEach((s, si) => s.subs.forEach(c => out.push({ w, s, c, si, n: w.shelves.length }))));
@@ -60,6 +96,7 @@ function allSubs() {
 }
 const used = subId => data.items.filter(i => i.subId === subId).reduce((a, i) => a + i.qty, 0);
 const room = c => (c.capacity ? c.capacity - used(c.id) : Infinity);
+const crumb = ({ w, s, c }) => `${esc(w.name)} <span>›</span> ${esc(s.name)} <span>›</span> ${esc(c.name)}`;
 const where = ({ w, s, c }) => `${w.name} › ${s.name} › ${c.name}`;
 
 // Rank sections for a pile of clothes, then split the pile across the best ones.
@@ -87,18 +124,21 @@ function makePlan(category, qty, freq) {
   return { steps, left };
 }
 
-// ---------- Users ----------
+// ---------- Users (local mode) ----------
 function initUsers() {
   users = Store.users();
   user = Store.current();
   if (!users.length) { users = ["Me"]; Store.saveUsers(users); }
   if (!users.includes(user)) user = users[0];
+  setSync("Saved on this device");
   switchUser(user);
 }
 function switchUser(name) {
   user = name; Store.saveCurrent(name);
   data = Store.load(name) || newData();
   $("user").innerHTML = users.map(u => `<option ${u === name ? "selected" : ""}>${esc(u)}</option>`).join("");
+  $("accountLine").textContent = `Data stays in this browser. Current user: ${name}.`;
+  resetWizard();
   renderAll();
   showTab(data.wardrobes.length ? "place" : "setup");
 }
@@ -109,7 +149,7 @@ $("newUser").onclick = () => {
   users.push(n); Store.saveUsers(users); switchUser(n);
 };
 $("delUser").onclick = () => {
-  if (users.length < 2) return alert("You need at least one user.");
+  if (users.length < 2) return toast("You need at least one user.", "err");
   if (!confirm(`Delete user "${user}" and all their data?`)) return;
   Store.remove(user);
   users = users.filter(u => u !== user); Store.saveUsers(users);
@@ -119,48 +159,54 @@ $("delUser").onclick = () => {
 // ---------- Auth ----------
 let signUpMode = false;
 function showAuth(on) {
-  $("auth").classList.toggle("hide", !on);
-  $("tabs").classList.toggle("hide", on);
-  if (on) ["place", "layout", "setup", "data"].forEach(t => $(t).classList.add("hide"));
+  document.body.classList.remove("booting");
+  document.body.classList.toggle("signed-out", on);
+}
+function setAuthMsg(text, isErr) {
+  $("aMsg").hidden = !text;
+  $("aMsg").textContent = text || "";
+  $("aMsg").classList.toggle("err", !!isErr);
+  $("aMascot").src = MASCOT(isErr ? "09-error" : "01-mascot-main");
 }
 function setAuthMode(signUp) {
   signUpMode = signUp;
-  $("authTitle").textContent = signUp ? "Create account" : "Sign in";
+  $("authTitle").innerHTML = signUp ? "Create your <span>account.</span>" : "Your wardrobe, <span>sorted.</span>";
   $("aGo").textContent = signUp ? "Create account" : "Sign in";
   $("aSwitch").textContent = signUp ? "I have an account" : "Create account";
   $("aPass").autocomplete = signUp ? "new-password" : "current-password";
-  $("aMsg").textContent = "";
+  setAuthMsg("");
 }
 $("aSwitch").onclick = () => setAuthMode(!signUpMode);
-$("aGo").onclick = async () => {
+$("authForm").onsubmit = async e => {
+  e.preventDefault();
   const email = $("aEmail").value.trim(), password = $("aPass").value;
-  if (!email || password.length < 6) { $("aMsg").textContent = "Enter an email and a password of at least 6 characters."; return; }
-  $("aMsg").textContent = "";
+  if (!email || password.length < 6) return setAuthMsg("Enter an email and a password of at least 6 characters.", true);
+  setAuthMsg("");
   const { data: res, error } = signUpMode
     ? await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } })
     : await sb.auth.signInWithPassword({ email, password });
-  if (error) { $("aMsg").textContent = error.message; return; }
-  if (signUpMode && !res.session) $("aMsg").textContent = "Check your email to confirm your account, then sign in.";
+  if (error) return setAuthMsg(error.message, true);
+  if (signUpMode && !res.session) setAuthMsg("Check your email to confirm your account, then sign in.");
 };
 $("aForgot").onclick = async () => {
   const email = $("aEmail").value.trim();
-  if (!email) { $("aMsg").textContent = "Type your email above first."; return; }
+  if (!email) return setAuthMsg("Type your email above first.", true);
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-  $("aMsg").textContent = error ? error.message : "Password reset link sent. Check your email.";
+  setAuthMsg(error ? error.message : "Password reset link sent. Check your email.", !!error);
 };
 $("signOut").onclick = async () => {
-  if (saveTimer) { clearTimeout(saveTimer); await pushCloud(); saveTimer = null; }
+  if (saveTimer) { clearTimeout(saveTimer); await pushCloud(); }
   await sb.auth.signOut();
 };
 
 async function startCloud(session) {
   uidCloud = session.user.id;
   user = session.user.email || "me";
-  $("user").classList.add("hide"); $("newUser").classList.add("hide"); $("delUser").classList.add("hide");
-  $("account").classList.remove("hide"); $("email").textContent = user;
+  $("localUsers").classList.add("hide"); $("account").classList.remove("hide");
+  $("accountLine").textContent = `Signed in as ${user}`;
   setSync("Loading…");
   const { data: row, error } = await sb.from("wardrobe_data").select("data").eq("user_id", uidCloud).maybeSingle();
-  if (error) { console.error(error); setSync("Could not load"); data = Store.load(user) || newData(); }
+  if (error) { console.error(error); setSync("Could not load"); toast("Couldn’t load from the cloud. Showing the copy on this device.", "err"); data = Store.load(user) || newData(); }
   else if (row) { data = row.data; setSync("Saved"); }
   else {
     // First sign-in: offer to bring over anything created in local mode.
@@ -169,18 +215,19 @@ async function startCloud(session) {
     Store.save(user, data); await pushCloud();
   }
   Store.save(user, data);
+  resetWizard();
   showAuth(false); renderAll(); showTab(data.wardrobes.length ? "place" : "setup");
 }
 let starting = false;
 async function initCloud() {
-  $("user").classList.add("hide"); $("newUser").classList.add("hide");
-  $("tabs").classList.add("hide"); ["place", "layout", "setup", "data"].forEach(t => $(t).classList.add("hide"));
+  document.body.classList.add("booting");
+  $("localUsers").classList.add("hide");
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === "PASSWORD_RECOVERY") {
       const p = prompt("Choose a new password (min 6 characters):");
-      if (p && p.length >= 6) { const { error } = await sb.auth.updateUser({ password: p }); alert(error ? error.message : "Password updated."); }
+      if (p && p.length >= 6) { const { error } = await sb.auth.updateUser({ password: p }); toast(error ? error.message : "Password updated.", error ? "err" : "ok"); }
     }
-    if (event === "SIGNED_OUT") { uidCloud = null; data = null; $("account").classList.add("hide"); showAuth(true); }
+    if (event === "SIGNED_OUT") { uidCloud = null; data = null; setAuthMode(false); showAuth(true); }
     else if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION") && uidCloud !== session.user.id && !starting) {
       // Defer: supabase-js must not be awaited inside this callback.
       starting = true;
@@ -193,39 +240,77 @@ async function initCloud() {
 
 // ---------- Tabs ----------
 function showTab(id) {
-  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === id));
+  $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
   ["place", "layout", "setup", "data"].forEach(t => $(t).classList.toggle("hide", t !== id));
   renderAll();
+  window.scrollTo({ top: 0 });
 }
-$("tabs").onclick = e => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); };
+document.addEventListener("click", e => {
+  const b = e.target.closest(".nav-item");
+  if (b && b.dataset.tab) showTab(b.dataset.tab);
+});
 
 // ---------- Place ----------
-let pending = null;
+let placeCat = "", placeFreq = "weekly", pending = null;
 function renderPlace() {
-  $("pCat").innerHTML = data.categories.map(c => `<option>${esc(c)}</option>`).join("");
+  if (!data.categories.includes(placeCat)) placeCat = data.categories[0] || "";
+  $("placeCategories").innerHTML = data.categories.length
+    ? data.categories.map(c => `<button type="button" class="chip ${c === placeCat ? "selected" : ""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("")
+    : `<p class="muted">No categories yet. Add some in Setup.</p>`;
+  $$("#wearGrid .wear").forEach(b => b.classList.toggle("selected", b.dataset.freq === placeFreq));
+  if (!$("tipText").textContent) $("tipText").textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
+}
+$("placeCategories").onclick = e => {
+  const b = e.target.closest("[data-cat]"); if (!b) return;
+  placeCat = b.dataset.cat; renderPlace();
+};
+$("wearGrid").onclick = e => {
+  const b = e.target.closest("[data-freq]"); if (!b) return;
+  placeFreq = b.dataset.freq; renderPlace();
+};
+document.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
+  $("pQty").value = Math.min(999, Math.max(1, (parseInt($("pQty").value, 10) || 1) + +b.dataset.qty));
+});
+
+function emptyPlanCard(img, title, body) {
+  return `<div class="card result-card warn-card"><img class="mascot" src="${MASCOT(img)}" alt=""><h2>${title}</h2><p class="muted">${body}</p></div>`;
 }
 $("find").onclick = () => {
-  if (!data.wardrobes.length) { $("plan").innerHTML = `<div class="plan warn">Set up your wardrobes first (Setup tab).</div>`; return; }
-  const category = $("pCat").value, freq = $("pFreq").value;
-  const qty = Math.max(1, parseInt($("pQty").value, 10) || 1);
-  const name = $("pName").value.trim() || category;
-  const plan = makePlan(category, qty, freq);
-  pending = { name, category, freq, plan };
-  if (!plan.steps.length) {
-    $("plan").innerHTML = `<div class="plan warn">No section accepts "${esc(category)}" or has room. Add a section or raise a capacity in Setup.</div>`;
+  if (!data.wardrobes.length) {
+    $("plan").innerHTML = emptyPlanCard("03-pointing-wardrobe", "Set up your wardrobes first", "Tell the duck how many wardrobes, shelves and sections you have.");
     return;
   }
-  $("plan").innerHTML = `<div class="plan">
-    <ul>${plan.steps.map(({ x, take }) => `<li><b>${esc(where(x))}</b>: ${take} pc${take > 1 ? "s" : ""}
-      <span class="hint">(${used(x.c.id)}${x.c.capacity ? "/" + x.c.capacity : ""} now)</span></li>`).join("")}</ul>
-    ${plan.left > 0 ? `<p class="warn">${plan.left} piece(s) don't fit anywhere. Add capacity or another section.</p>` : ""}
-    <button class="btn" id="confirm">Place ${qty - plan.left} piece(s) here</button></div>`;
+  if (!placeCat) return toast("Pick a category first.", "err");
+  const qty = Math.max(1, parseInt($("pQty").value, 10) || 1);
+  const name = $("pName").value.trim() || placeCat;
+  const plan = makePlan(placeCat, qty, placeFreq);
+  pending = { name, category: placeCat, freq: placeFreq, plan };
+  if (!plan.steps.length) {
+    $("plan").innerHTML = emptyPlanCard("04-confused-searching", "No spot found", `No section accepts “${esc(placeCat)}” or has room. Add a section or raise a capacity in Setup.`);
+    return;
+  }
+  const placed = qty - plan.left;
+  $("plan").innerHTML = `<div class="card result-card">
+    <p class="eyebrow">BEST MATCH</p>
+    ${plan.steps.map(({ x, take }) => {
+      const u = used(x.c.id), after = u + take;
+      const pct = x.c.capacity ? Math.min(100, after / x.c.capacity * 100) : 0;
+      return `<div class="step-row"><div class="step-path">${crumb(x)}</div>
+        <div class="result-meta"><strong>${take} pc${take > 1 ? "s" : ""}</strong>
+          <span class="tag">${x.c.category === ANY ? "Any" : esc(x.c.category)}</span>
+          <span class="capacity ${x.c.capacity && after >= x.c.capacity ? "full" : ""}">● ${after}${x.c.capacity ? " / " + x.c.capacity : ""}</span></div>
+        ${x.c.capacity ? `<div class="capacity-bar"><span class="${pct >= 100 ? "full" : ""}" style="width:${pct}%"></span></div>` : ""}</div>`;
+    }).join("")}
+    ${plan.left > 0 ? `<div class="overflow">${plan.left} piece(s) don’t fit anywhere. Add capacity or another section.</div>` : ""}
+    <button class="btn primary full" id="confirm">Place ${placed} piece${placed > 1 ? "s" : ""} here</button>
+  </div>`;
   $("confirm").onclick = () => {
     pending.plan.steps.forEach(({ x, take }) =>
       data.items.push({ id: uid(), name: pending.name, category: pending.category, qty: take, subId: x.c.id, freq: pending.freq }));
     persist(); pending = null;
-    $("plan").innerHTML = `<div class="plan">Placed.</div>`;
+    $("plan").innerHTML = `<div class="card result-card ok-card"><img class="mascot" src="${MASCOT("05-happy-after-tidy")}" alt=""><h2>All tidy!</h2><p class="muted">Placed ${placed} piece${placed > 1 ? "s" : ""}. Got another pile?</p></div>`;
     $("pName").value = ""; $("pQty").value = 1;
+    toast(`${placed} piece${placed > 1 ? "s" : ""} placed.`);
   };
 };
 
@@ -235,44 +320,114 @@ function renderLayout() {
   const hits = q ? data.items.filter(i => (i.name + " " + i.category).toLowerCase().includes(q)) : [];
   const hitSubs = new Set(hits.map(i => i.subId));
   const byId = Object.fromEntries(allSubs().map(x => [x.c.id, x]));
-  $("searchResult").innerHTML = q
-    ? (hits.length ? `<ul>${hits.map(i => `<li>${esc(i.name)} (${i.qty}) — ${byId[i.subId] ? esc(where(byId[i.subId])) : "?"}</li>`).join("")}</ul>` : `<p class="hint">Nothing found.</p>`)
-    : "";
-  if (!data.wardrobes.length) { $("wardrobes").innerHTML = `<div class="card">No wardrobes yet. Go to Setup.</div>`; return; }
+  $("searchResult").innerHTML = !q ? "" : hits.length
+    ? `<div class="card search-hits"><ul>${hits.map(i => `<li><b>${esc(i.name)}</b> (${i.qty}) — ${byId[i.subId] ? esc(where(byId[i.subId])) : "?"}</li>`).join("")}</ul></div>`
+    : `<div class="card empty-state"><img class="mascot" src="${MASCOT("12-search")}" alt=""><p class="muted">Nothing found for “${esc(q)}”.</p></div>`;
+  if (!data.wardrobes.length) {
+    $("wardrobes").innerHTML = `<div class="card empty-state" style="grid-column:1/-1"><img class="mascot" src="${MASCOT("04-confused-searching")}" alt=""><h2>No wardrobes yet</h2><p class="muted">Head to Setup and tell the duck what you have.</p></div>`;
+    return;
+  }
   $("wardrobes").innerHTML = data.wardrobes.map(w => `
-    <div class="wardrobe"><h3>${esc(w.name)}</h3>
-    ${w.shelves.map(s => `<div class="shelf"><div class="sname">${esc(s.name)}</div><div class="subs">
+    <article class="wardrobe"><h2>${esc(w.name)}</h2>
+    ${w.shelves.map(s => `<div class="shelf" style="--n:${s.subs.length || 1}">
       ${s.subs.map(c => {
         const u = used(c.id), items = data.items.filter(i => i.subId === c.id);
-        const pct = c.capacity ? Math.min(100, u / c.capacity * 100) : 0;
-        return `<details class="sub ${hitSubs.has(c.id) ? "hit" : ""}" ${hitSubs.has(c.id) ? "open" : ""}>
-          <summary><b>${esc(c.name)}</b><br><span class="cat">${c.category === ANY ? "Any" : esc(c.category)}</span>
-          · ${u}${c.capacity ? "/" + c.capacity : ""}
-          ${c.capacity ? `<div class="bar"><i class="${pct >= 100 ? "full" : ""}" style="width:${pct}%"></i></div>` : ""}</summary>
-          <ul>${items.map(i => `<li><span>${esc(i.name)} ×${i.qty}</span><button class="link" data-rm="${i.id}" aria-label="Remove">✕</button></li>`).join("") || `<li class="hint">Empty</li>`}</ul>
+        const full = c.capacity && u >= c.capacity, pct = c.capacity ? Math.min(100, u / c.capacity * 100) : 0;
+        const hit = hitSubs.has(c.id);
+        return `<details class="section-card ${full ? "full" : ""} ${hit ? "hit" : ""}" ${hit ? "open" : ""}>
+          <summary><b>${esc(c.name)}</b><small>${c.category === ANY ? "Any" : esc(c.category)} · ${full ? "FULL" : u + (c.capacity ? " / " + c.capacity : "") + " pcs"}</small>
+          ${c.capacity ? `<div class="mini-bar"><i style="width:${pct}%"></i></div>` : ""}</summary>
+          <ul>${items.map(i => `<li><span>${esc(i.name)} ×${i.qty}</span><button class="link" data-rm="${i.id}" aria-label="Remove ${esc(i.name)}">✕</button></li>`).join("") || `<li class="empty">Empty</li>`}</ul>
         </details>`;
-      }).join("")}</div></div>`).join("")}</div>`).join("");
+      }).join("")}</div>`).join("")}</article>`).join("");
 }
 $("search").oninput = renderLayout;
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); showTab("layout"); $("search").focus(); }
+});
 $("wardrobes").onclick = e => {
   const id = e.target.dataset.rm; if (!id) return;
   data.items = data.items.filter(i => i.id !== id); persist(); renderLayout();
 };
 
-// ---------- Setup ----------
-function renderSetup() {
-  $("welcome").classList.toggle("hide", data.wardrobes.length > 0);
-  $("welcome").innerHTML = `<h2>Welcome, ${esc(user)}</h2><p class="hint" style="margin:0">Start by generating a layout: how many wardrobes, shelves and sections you have. You can rename and adjust everything afterwards.</p>`;
-  $("catList").innerHTML = data.categories.map(c => `<span class="chip">${esc(c)} <button data-cat-del="${esc(c)}" aria-label="Remove ${esc(c)}">×</button></span>`).join("");
-  renderEditor();
+// ---------- Setup wizard ----------
+let setupStep = 1, dims = { w: 3, s: 4, c: 3 }, layoutDirty = false;
+function resetWizard() {
+  setupStep = 1; layoutDirty = false;
+  if (data && data.wardrobes.length) {
+    const w0 = data.wardrobes[0];
+    dims = { w: data.wardrobes.length, s: w0.shelves.length || 1, c: (w0.shelves[0] && w0.shelves[0].subs.length) || 1 };
+  } else dims = { w: 3, s: 4, c: 3 };
 }
+const MAXD = { w: 20, s: 20, c: 10 };
+
+function renderSetup() {
+  $("setupTitle").textContent = data.wardrobes.length ? "Make your storage fit you." : `Welcome, ${user}!`;
+  $("setupMascot").src = MASCOT(setupStep === 1 ? "03-pointing-wardrobe" : setupStep === 2 ? "06-checklist" : "11-tips");
+  $("setupBubble").innerHTML = setupStep === 1 ? "Show me<br><b>your wardrobes!</b>" : setupStep === 2 ? "What do you<br><b>store?</b>" : "Almost<br><b>there!</b>";
+  $$("[data-panel]").forEach(p => p.hidden = +p.dataset.panel !== setupStep);
+  $$("#setupProgress .progress-dot").forEach((d, i) => d.classList.toggle("active", i < setupStep));
+  $("setupBack").hidden = setupStep === 1;
+  $("setupNext").textContent = setupStep === 3 ? "Finish" : "Next";
+  $("sW").textContent = dims.w; $("sS").textContent = dims.s; $("sC").textContent = dims.c;
+  $("rebuildNote").hidden = !(data.wardrobes.length && layoutDirty);
+  $("miniPreview").innerHTML = Array.from({ length: dims.w }, (_, i) => `<div class="mini-cab">Wardrobe ${i + 1}${
+    Array.from({ length: dims.s }, () => `<div class="mini-shelf">${"<i></i>".repeat(dims.c)}</div>`).join("")}</div>`).join("");
+  const cats = [...new Set([...DEFAULT_CATS, ...data.categories])];
+  $("setupCategories").innerHTML = cats.map(c => `<button type="button" class="chip ${data.categories.includes(c) ? "selected" : ""}" data-sc="${esc(c)}">${esc(c)}</button>`).join("")
+    + `<button type="button" class="chip add" id="catAdd">+ Add category</button>`;
+  if (setupStep === 3) renderEditor();
+}
+document.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+  const k = b.dataset.set;
+  dims[k] = Math.max(1, Math.min(MAXD[k], dims[k] + +b.dataset.step));
+  layoutDirty = true; renderSetup();
+});
+$("setupProgress").onclick = e => {
+  const g = e.target.dataset.go; if (!g) return;
+  if (+g > 1 && !data.wardrobes.length && !applyLayout()) return;
+  setupStep = +g; renderSetup();
+};
+
+// Returns false if the user cancelled.
+function applyLayout() {
+  if (data.wardrobes.length && !layoutDirty) return true;
+  if (data.wardrobes.length && !confirm("This rebuilds your layout and removes all placed garments. Continue?")) return false;
+  data.wardrobes = Array.from({ length: dims.w }, (_, i) => newWardrobe(i + 1, dims.s, dims.c));
+  data.items = [];
+  layoutDirty = false; persist();
+  return true;
+}
+$("setupNext").onclick = () => {
+  if (setupStep === 1 && !applyLayout()) return;
+  if (setupStep < 3) { setupStep++; renderSetup(); window.scrollTo({ top: 0 }); return; }
+  toast("Setup saved. Your wardrobe is ready."); setupStep = 1; showTab("place");
+};
+$("setupBack").onclick = () => { setupStep = Math.max(1, setupStep - 1); renderSetup(); };
+
+$("setupCategories").onclick = e => {
+  if (e.target.id === "catAdd") {
+    const v = (prompt("New category name:") || "").trim();
+    if (!v || data.categories.some(c => c.toLowerCase() === v.toLowerCase())) return;
+    data.categories.push(v); persist(); renderSetup(); return;
+  }
+  const c = e.target.dataset.sc; if (!c) return;
+  if (data.categories.includes(c)) {
+    if (data.items.some(i => i.category === c)) return toast(`Garments are stored under “${c}”. Remove them first.`, "err");
+    data.categories = data.categories.filter(x => x !== c);
+    allSubs().forEach(x => { if (x.c.category === c) x.c.category = ANY; });
+  } else data.categories.push(c);
+  persist(); renderSetup();
+};
+
+// ---------- Setup: fine-tune editor ----------
 function catOptions(sel) {
   return `<option value="${ANY}" ${sel === ANY ? "selected" : ""}>Any category</option>` +
     data.categories.map(c => `<option ${c === sel ? "selected" : ""}>${esc(c)}</option>`).join("");
 }
 function renderEditor() {
-  if (!data.wardrobes.length) { $("editor").innerHTML = `<p class="hint">Nothing yet. Generate a layout above.</p>`; return; }
-  $("editor").innerHTML = data.wardrobes.map((w, wi) => `
+  if (!data.wardrobes.length) { $("editor").innerHTML = `<p class="muted">Nothing yet. Go back to step 1.</p>`; return; }
+  $("editor").innerHTML = data.wardrobes.map(w => `
     <div class="ed-wardrobe">
       <div class="ed-head"><input data-f="w-name" data-w="${w.id}" value="${esc(w.name)}" aria-label="Wardrobe name">
         <button class="link" data-act="del-w" data-w="${w.id}">Delete</button></div>
@@ -284,16 +439,15 @@ function renderEditor() {
             <div class="ed-sub">
               <input data-f="c-name" data-c="${c.id}" value="${esc(c.name)}" aria-label="Section name">
               <select data-f="c-cat" data-c="${c.id}" aria-label="Category">${catOptions(c.category)}</select>
-              <input data-f="c-cap" data-c="${c.id}" type="number" min="1" placeholder="Capacity" value="${c.capacity ?? ""}" aria-label="Capacity">
+              <input data-f="c-cap" data-c="${c.id}" type="number" min="1" placeholder="Max pcs" value="${c.capacity ?? ""}" aria-label="Capacity">
               <button class="link" data-act="del-c" data-s="${s.id}" data-w="${w.id}" data-c="${c.id}" aria-label="Delete section">✕</button>
             </div>`).join("")}
-          <button class="link" data-act="add-c" data-w="${w.id}" data-s="${s.id}">+ section</button>
+          <button class="ed-add" data-act="add-c" data-w="${w.id}" data-s="${s.id}">+ section</button>
         </div>`).join("")}
-      <button class="link" data-act="add-s" data-w="${w.id}">+ shelf</button>
-    </div>`).join("") + `<button class="btn ghost" data-act="add-w">+ Wardrobe</button>`;
+      <button class="ed-add" data-act="add-s" data-w="${w.id}">+ shelf</button>
+    </div>`).join("") + `<button class="btn ghost" data-act="add-w" style="margin-top:12px">+ Wardrobe</button>`;
 }
-
-function findSubById(id) { return allSubs().find(x => x.c.id === id); }
+const findSubById = id => allSubs().find(x => x.c.id === id);
 
 $("editor").addEventListener("input", e => {
   const f = e.target.dataset.f; if (!f) return;
@@ -332,45 +486,26 @@ $("editor").addEventListener("click", e => {
   persist(); renderEditor();
 });
 
-$("generate").onclick = () => {
-  const clamp = (el, max) => Math.min(max, Math.max(1, parseInt(el.value, 10) || 1));
-  const W = clamp($("gW"), 20), S = clamp($("gS"), 20), C = clamp($("gC"), 10);
-  if (data.wardrobes.length && !confirm("This replaces your current layout and removes all placed garments. Continue?")) return;
-  data.wardrobes = Array.from({ length: W }, (_, i) => newWardrobe(i + 1, S, C));
-  data.items = [];
-  persist(); renderSetup();
-};
-$("catAdd").onclick = () => {
-  const v = $("catNew").value.trim();
-  if (!v || data.categories.some(c => c.toLowerCase() === v.toLowerCase())) return;
-  data.categories.push(v); $("catNew").value = ""; persist(); renderSetup();
-};
-$("catList").onclick = e => {
-  const c = e.target.dataset.catDel; if (!c) return;
-  if (data.items.some(i => i.category === c)) return alert(`Garments are stored under "${c}". Remove them first.`);
-  data.categories = data.categories.filter(x => x !== c);
-  allSubs().forEach(x => { if (x.c.category === c) x.c.category = ANY; });
-  persist(); renderSetup();
-};
-
 // ---------- Data ----------
 $("exp").onclick = () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   a.download = `wardrobe-${user}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("Backup exported.");
 };
 $("imp").onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   f.text().then(t => {
     const d = JSON.parse(t);
     if (!Array.isArray(d.wardrobes) || !Array.isArray(d.items) || !Array.isArray(d.categories)) throw 0;
-    data = d; persist(); renderAll();
-  }).catch(() => alert("That file is not a valid export."));
+    data = d; persist(); resetWizard(); renderAll(); toast("Backup imported.");
+  }).catch(() => toast("That file is not a valid export.", "err"));
   e.target.value = "";
 };
 $("clearItems").onclick = () => {
   if (!confirm("Remove all garments? The wardrobe layout stays.")) return;
-  data.items = []; persist(); renderAll();
+  data.items = []; persist(); renderAll(); toast("All garment records removed.");
 };
 
 function renderAll() { renderPlace(); renderLayout(); renderSetup(); }
